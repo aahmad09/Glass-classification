@@ -1,0 +1,97 @@
+---
+title: "Glass Classification"
+author: '"Trey Lisauckis, Asjal Ahmad, Nathan Early"'
+date: "12/3/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+In this document we will be testing several different classification methods on a set of data containing information about glass. We will first use the random forest method, which operates by constructing a multitude of decision trees at training time. For classification tasks, the output of the random forest is the class selected by most trees. We will then move on to the decision tree method, which builds classification models by breaking down a data set into smaller and smaller subsets while at the same time incrementally developing an associated decision tree. Finally, we will look at the support vector machine (SVM) method, which are supervised learning models with associated learning algorithms that analyze data for classification. Given a set of training examples, each marked as belonging to one of the categories, an SVM training algorithm builds a model that assigns new examples to one category or another.
+
+## Prelimenary Operations
+In this chunk, we load the necessary packages, load the data set, and partition the data. The data is partitioned into two parts: 75% belonging to the training data and 25% belonging to the testing data. We will build our models using the training data and test their effectiveness on the testing data. We also made sure that each instance of the Type variable from the data is set as a factor so that the models recognize it as a categorical variable when we are performing the classifications.
+
+```{r}
+library(caret)
+library(randomForest)
+library(rpart.plot)
+library(rpart)
+library(e1071)
+library(tidyverse)
+library(dplyr)
+library(readr)
+
+glass<-(read_csv("glass.csv"))
+glass
+
+set.seed(1729)
+inTrain<-createDataPartition(glass$Type,p=0.75,list=F)
+training<-glass[inTrain,]
+testing<-glass[-inTrain,]
+
+glass$Type <- factor(glass$Type)
+testing$Type <- factor(testing$Type)
+training$Type <- factor(training$Type)
+```
+
+## Random Forest Method
+As mentioned in the introduction, random forest models create multiple classification trees and make classifications based on consensus picks. There are 2 random elements: each tree in a random forest uses a random subset of the training data and each tree in a random forest uses a random subset of the available variables. The number of features used can be chosen, or a package might experiment to find the best number.
+```{r}
+fit1<-train(Type~.,data=training,method="rf")
+preds<-predict(fit1,newdata=testing)
+cM <- confusionMatrix(preds,testing$Type)
+cM
+```
+This method did a really good job of predicting the test values correctly. It got 86.54% of its classifications correct with a 95% confidence interval of (74.21%, 94.41%). It seems that it incorrectly classified one B as an A, 2 A's and 1 F as a B, 2 A's as a C, and 1 B as a G, but got all E's and F's correct. Class C suffered from the lowest Balanced Accuracy and Class E experienced the highest. Lets see if this stat prevails in the next two tests. 
+
+## Decision Tree Method
+A Decision tree is a flowchart like tree structure, where each internal node denotes a test on an attribute, each branch represents an outcome of the test, and each leaf node holds a class label.
+```{r}
+fitglass <- rpart(as.factor(Type)~.,data=training)
+fitglass
+rpart.plot(fitglass)
+predsDT <- predict(fitglass, newdata = testing, type = "class")
+confusionMatrix(predsDT, testing$Type)
+
+fitglass2 <- train(as.factor(Type)~.,data=training,method="rpart")
+predsDT2 <- predict(fitglass, newdata = testing, type = "class")
+confusionMatrix(predsDT2, testing$Type)
+```
+This method had an accuracy of 75.00% with a 95% confidence interval of (54.9%, 81.28%). There were a handful of incorrect classifications:
+  - from 17 class A glasses, 15 were correctly classified
+  - from 19 class B glasses, only 14 were correctly classified
+  - from 4 class C glasses, only 1 was correctly classified
+  - all of the 2 class 3 glasses were correctly classified
+  - none of the 2 class F glasses were correctly classified
+  - 6 of the 7 class G glasses were correctly classified
+Class F suffered from the lowest Balanced Accuracy and Class E experienced the highest. Compared to random forest model, there were a lot more incorrect classifications. We also ran the model using PCA but did not see any changes to the results. 
+
+## SVM Method
+Finally, we will analyze the SVM method in comparison to the RF and DT methods. To classify new data using this method, we pick a threshold value. When we put it at the midpoint between the two closest observations from the two groups, the
+margin is maximized, giving us a maximal margin classifier. New values to the left of the threshold will be classified as type A, and those to the right will be classified as type B. Since there are 6 categories, we know that there will be 5 lines separating the observations.
+```{r}
+svmfit<-svm(as.factor(Type)~.,data=training,kernel="linear",cost=1)
+print(svmfit)
+preds<-predict(svmfit,newdata=testing)
+confusionMatrix(preds,testing$Type)
+
+svmfit2<-svm(as.factor(Type)~.,data=training,kernel="linear",cost=100)
+print(svmfit2)
+preds2<-predict(svmfit2,newdata=testing)
+confusionMatrix(preds2,testing$Type)
+
+svmfit3<-svm(as.factor(Type)~.,data=training,kernel="linear",cost=10000)
+print(svmfit3)
+preds3<-predict(svmfit3,newdata=testing)
+confusionMatrix(preds3,testing$Type)
+```
+We ran three different models, each time experimenting with a higher value for the cost of constraint violation. We found that as we increased this value our accuracy went up. For the sake of computing power, we stopped at 10,000 but we predict that going any higher would not help our model. The first model with a cost of 1 had a 67.31% accuracy. The second model with a cost of 100 had a 71.15% accuracy. The third model with a cost of 10000 had a 73.08% accuracy. So we conclude that the higher cost value did improve our SVM model. 
+
+## Conclusion
+In closing, we found that the Random Forest method, while also being the most computationally expensive, did have the highest accuracy. The second highest accuracy was the Decision Tree method followed closely by the SVM of cost 10000. So, if the system can support the Random Forest method this might be the most effective approach. However, if the system cannot support this method, it might be smarter to use the decision tree model.
